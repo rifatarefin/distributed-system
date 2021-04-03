@@ -4,14 +4,18 @@ ID: 1001877262
 """
 import tkinter as tk
 import socket
+import pickle
 from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import asksaveasfile
 
 server_port = 12100
 client_socket = None
+lexicon = set()
 
 """ Prompt user to choose file to send """
 def open_file(root):
+    client_socket.send("data".encode())
+
     path = open(askopenfilename(),'rb')                 #file chooser 
     client_socket.sendfile(path)
     
@@ -26,7 +30,7 @@ def open_file(root):
     print(get)
     
     
-    tk.Label(root, text="Upload complete").grid()
+    tk.Label(root, text="Upload complete\nSpell checking complete").grid()
     tk.Button(root, text = "Save as",command=lambda: save_file(root,get)).grid()
     root.tkraise()
 
@@ -44,6 +48,24 @@ def save_file(root, data):
     tk.Button(root, text = "Quit",command=lambda: quit_app()).grid()
     tk.Button(root, text = "Start over", command=lambda: restart(root)).grid()
     root.tkraise()
+
+def show_lexicon(frame, label):
+    label['text'] = "Lexicon Queue " + str(lexicon)
+    # tk.Label(frame, text=x).grid()
+    # frame.tkraise()
+    master.after(300, show_lexicon, frame, label)
+
+def add_lexicon(entry):
+    lexicon.add(entry.get())
+    entry.delete(0,'end')
+
+def send_lexicon():
+    print("sending")
+    client_socket.send("lexicon".encode())
+    lex = pickle.dumps(lexicon)
+    client_socket.send(lex)
+    lexicon.clear()
+    master.after(10000, send_lexicon)
 
 """ connect with the server and register a username """
 def send_username(root_frame, entry):
@@ -65,8 +87,17 @@ def send_username(root_frame, entry):
         if(msg == "ok"):                          #servers sends ok if name available
             tk.Label(frame2, text="Welcome "+username).grid()
             tk.Button(frame2, text="Choose file", command=lambda:open_file(frame2)).grid()
+            dummy = tk.Label(frame2, text="")
+            dummy.grid()
+            lex_input = tk.Entry(frame2, bd=5)
+            lex_input.grid()
+            tk.Button(frame2, text="Insert lexicon", command=lambda:add_lexicon(lex_input)).grid()
             tk.Button(frame2, text = "Quit",command=quit_app).grid()
+
+            show_lexicon(frame2, dummy)
+            send_lexicon()
             frame2.tkraise()
+            
         
         else:                                      #server rejects if name not available
             if(msg == "duplicate"):

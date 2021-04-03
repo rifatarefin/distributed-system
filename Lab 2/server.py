@@ -7,6 +7,7 @@ import threading
 import re
 import tkinter as tk
 import os
+import pickle
 
 """ create a TCP socket """
 server_port = 12100
@@ -15,14 +16,23 @@ server_socket.bind(('localhost',server_port))    #create server on a port
 server_socket.listen()                          
 print ('The server is ready to receive')
 
-lexicon = open('lexicon.txt').read().split()   #read lexicon from file
+lexicon = set(open('lexicon.txt').read().split())   #read lexicon from file
 client_name = set()                            #currently connected clients
 name2 = set(client_name)                       #for checking arriving or leaving clients
 
 """ thread for each client """
 def listen(connection_socket, username):
 
-    
+    while(True):
+        header = connection_socket.recv(1024).decode()
+        if (header =="data" or len(header) == 0):
+            break
+        elif (header == "lexicon"):
+            lex = connection_socket.recv(1024)
+            lex = pickle.loads(lex)
+            global lexicon
+            lexicon = lexicon.union(lex)
+            print(lexicon)
     data = b''
     while(True):                                #receive file in chunks
         chunk = connection_socket.recv(1024)
@@ -30,7 +40,7 @@ def listen(connection_socket, username):
         if len(chunk)<1024:
             break
     print(data.decode())
-
+    print("test")
     st = data.decode()                          #convert binary to text
     for i in lexicon:                           #replace misspelled words
         pattern = re.compile(i,re.IGNORECASE)
