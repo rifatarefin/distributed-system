@@ -8,6 +8,7 @@ import re
 import tkinter as tk
 import os
 import pickle
+import time
 
 """ create a TCP socket """
 server_port = 12100
@@ -19,20 +20,31 @@ print ('The server is ready to receive')
 lexicon = set(open('lexicon.txt').read().split())   #read lexicon from file
 client_name = set()                            #currently connected clients
 name2 = set(client_name)                       #for checking arriving or leaving clients
+client_addr = {}
 
 """ thread for each client """
 def listen(connection_socket, username):
 
     while(True):
-        header = connection_socket.recv(1024).decode()
-        if (header =="data" or len(header) == 0):
-            break
-        elif (header == "lexicon"):
-            lex = connection_socket.recv(1024)
-            lex = pickle.loads(lex)
-            global lexicon
-            lexicon = lexicon.union(lex)
-            print(lexicon)
+        try:
+            header = connection_socket.recv(1024).decode()
+            if (header =="data"):
+                connection_socket.send("send data".encode())
+                break
+            elif (len(header) == 0):
+                break
+            elif (header == "lexicon"):
+                print("header lexicon")
+                connection_socket.send("send_lexicon".encode())
+                lex = connection_socket.recv(1024)
+                lex = pickle.loads(lex)
+                global lexicon
+                lexicon = lexicon.union(lex)
+                print(lexicon)
+        except Exception as e:
+            print(e)
+            print("prob")
+            continue
     data = b''
     while(True):                                #receive file in chunks
         chunk = connection_socket.recv(1024)
@@ -40,7 +52,6 @@ def listen(connection_socket, username):
         if len(chunk)<1024:
             break
     print(data.decode())
-    print("test")
     st = data.decode()                          #convert binary to text
     for i in lexicon:                           #replace misspelled words
         pattern = re.compile(i,re.IGNORECASE)
@@ -51,6 +62,7 @@ def listen(connection_socket, username):
         
     connection_socket.close()                   #close socket
     client_name.remove(username)                #remove from list
+    client_addr.pop(username)
 
 """ refresh client names real time
 master -> frame to refresh """
@@ -77,6 +89,16 @@ def show_clients():
     tk.mainloop()
     server_socket.close()
     os._exit(1)
+
+def polling():
+    # print("addr")
+    while(1):
+        time.sleep(15)
+        for k in client_addr.keys():
+            try:
+                client_addr[k].send("polling".encode())
+            except:
+                del client_addr[k]
     
 """ Quit button action """
 def quit_app(master):
@@ -85,12 +107,14 @@ def quit_app(master):
     os._exit(1)
 
 threading.Thread(target=show_clients).start()       #start thread for real time GUI
+threading.Thread(target=polling).start()
 while 1: 
     
     connection_socket, addr = server_socket.accept()        #accept new clients
     username = connection_socket.recv(1024).decode()        #receive username
     if username not in client_name and len(client_name)<3:  #send ok msg if no conflict
         client_name.add(username)
+        client_addr[username] = connection_socket
         connection_socket.send("ok".encode())
     
     else:                                                   #reject with a msg

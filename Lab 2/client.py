@@ -2,20 +2,24 @@
 Mohammad Rifat Arefin
 ID: 1001877262  
 """
+import os
 import tkinter as tk
 import socket
+import threading
 import pickle
+from orderedset import OrderedSet
 from tkinter.filedialog import askopenfilename
 from tkinter.filedialog import asksaveasfile
 
 server_port = 12100
 client_socket = None
-lexicon = set()
+lexicon = OrderedSet()
+polled = ""                                    #keep track of polled contents
 
 """ Prompt user to choose file to send """
 def open_file(root):
     client_socket.send("data".encode())
-
+    client_socket.recv(1024)
     path = open(askopenfilename(),'rb')                 #file chooser 
     client_socket.sendfile(path)
     
@@ -27,9 +31,11 @@ def open_file(root):
 
 
     get = client_socket.recv(1024).decode()
+    while(get=="polling"):
+        get = client_socket.recv(1024).decode()
     print(get)
     
-    
+    client_socket.close()
     tk.Label(root, text="Upload complete\nSpell checking complete").grid()
     tk.Button(root, text = "Save as",command=lambda: save_file(root,get)).grid()
     root.tkraise()
@@ -51,21 +57,41 @@ def save_file(root, data):
 
 def show_lexicon(frame, label):
     label['text'] = "Lexicon Queue " + str(lexicon)
+    global polled
+    if (polled != ""):
+        label['text'] += "\nPolled content by server:" + polled
     # tk.Label(frame, text=x).grid()
     # frame.tkraise()
-    master.after(300, show_lexicon, frame, label)
+    polled = ""
+    master.after(2000, show_lexicon, frame, label)
 
 def add_lexicon(entry):
     lexicon.add(entry.get())
     entry.delete(0,'end')
 
-def send_lexicon():
-    print("sending")
-    client_socket.send("lexicon".encode())
-    lex = pickle.dumps(lexicon)
-    client_socket.send(lex)
-    lexicon.clear()
-    master.after(10000, send_lexicon)
+def polling_req():
+    while(1):
+        # try:
+        req = client_socket.recv(1024).decode()
+        print(type(lexicon))
+        if(len(req)==0):
+            break
+        if(req=="polling"):
+            print(client_socket.fileno())
+            client_socket.send("lexicon".encode())
+            client_socket.recv(1024)
+            lex = pickle.dumps(lexicon)
+            client_socket.send(lex)
+            global polled
+            if len(lexicon)>0:
+                polled = str(lexicon)
+            lexicon.clear()
+        print(req+" ppp")
+        # except:
+        #     print("Lost")
+        #     break
+    
+    # master.after(5000, polling_req)
 
 """ connect with the server and register a username """
 def send_username(root_frame, entry):
@@ -95,8 +121,11 @@ def send_username(root_frame, entry):
             tk.Button(frame2, text = "Quit",command=quit_app).grid()
 
             show_lexicon(frame2, dummy)
-            send_lexicon()
             frame2.tkraise()
+            threading.Thread(target=polling_req).start()
+            # global proc_polling
+            # proc_polling = multiprocessing.Process(target=polling_req)
+            # proc_polling.start()
             
         
         else:                                      #server rejects if name not available
@@ -127,7 +156,7 @@ def restart(root):
 def quit_app():
     master.destroy()
     client_socket.close()
-    exit()
+    os._exit(1)
 
 """Prompt user for username  """
 def landing():
